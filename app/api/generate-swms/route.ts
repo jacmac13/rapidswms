@@ -20,19 +20,25 @@ function generateDocNumber(): string {
 }
 
 export async function POST(request: Request) {
+  console.log('[generate-swms] POST received');
+
   // Auth check
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (!user) {
+    console.error('[generate-swms] Auth failed:', authError?.message);
     return NextResponse.json({ error: 'Sign in to generate a SWMS.' }, { status: 401 });
   }
+  console.log('[generate-swms] Auth OK, user:', user.id);
 
   // Subscription check
-  const { data: subscription } = await supabase
+  const { data: subscription, error: subError } = await supabase
     .from('subscriptions')
     .select('status')
     .eq('user_id', user.id)
     .single();
+
+  console.log('[generate-swms] Subscription:', { status: subscription?.status, error: subError?.message });
 
   const isActive = subscription?.status === 'active' || subscription?.status === 'trialing';
   if (!isActive) {
@@ -97,11 +103,26 @@ export async function POST(request: Request) {
     jobDescription: jobDescription.trim(),
   };
 
+  console.log('[generate-swms] Starting Claude API call', {
+    trade: input.trade,
+    state: input.state,
+    jobDescriptionLength: input.jobDescription.length,
+    hasApiKey: !!process.env.ANTHROPIC_API_KEY,
+    apiKeyPrefix: process.env.ANTHROPIC_API_KEY?.slice(0, 15),
+  });
+
   let swmsJson;
   try {
     swmsJson = await generateSwms(input);
+    console.log('[generate-swms] Claude API call succeeded, jobTitle:', swmsJson.jobTitle);
   } catch (err) {
-    console.error('[generate-swms] Claude API error:', err);
+    const error = err as Error & { status?: number; error?: unknown };
+    console.error('[generate-swms] Claude API error:', {
+      message: error.message,
+      status: error.status,
+      errorBody: error.error,
+      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+    });
     return NextResponse.json(
       { error: 'Could not generate the SWMS right now. Please try again in a moment.' },
       { status: 500 }
