@@ -17,14 +17,14 @@ const PLANS: Plan[] = [
   {
     key: 'solo',
     name: 'Solo',
-    price: 29,
+    price: 22,
     description: '1 user',
     features: ['Unlimited SWMS (20/day)', 'PDF export', 'SWMS history', '7-day free trial'],
   },
   {
     key: 'crew',
     name: 'Small Crew',
-    price: 49,
+    price: 48,
     description: 'Up to 5 workers',
     features: ['Everything in Solo', 'Up to 5 worker sign-offs', '7-day free trial'],
     highlight: true,
@@ -32,7 +32,7 @@ const PLANS: Plan[] = [
   {
     key: 'business',
     name: 'Business',
-    price: 99,
+    price: 76,
     description: 'Unlimited workers',
     features: ['Everything in Crew', 'Unlimited workers', 'White-label PDF', '7-day free trial'],
   },

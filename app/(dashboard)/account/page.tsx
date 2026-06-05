@@ -6,9 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import type { Subscription } from '@/lib/types';
 
 const PLAN_LABELS: Record<string, string> = {
-  solo:     'Solo — $29/mo',
-  crew:     'Small Crew — $49/mo',
-  business: 'Business — $99/mo',
+  solo:     'Solo — $22/mo',
+  crew:     'Small Crew — $48/mo',
+  business: 'Business — $76/mo',
 };
 
 const STATUS_LABELS: Record<string, { label: string; colour: string }> = {
