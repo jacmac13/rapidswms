@@ -6,5 +6,14 @@
   "regions": ["syd1"],
   "env": {
     "NEXT_PUBLIC_APP_URL": "https://rapidswms.vercel.app"
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ]
   }
 }
