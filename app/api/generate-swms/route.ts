@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { generateSwms, type SwmsInput } from '@/lib/anthropic';
 
 export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 function adminClient() {
   return createAdminClient(
