@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { generateSwms, type SwmsInput } from '@/lib/anthropic';
 
+export const maxDuration = 60;
+
 function adminClient() {
   return createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
