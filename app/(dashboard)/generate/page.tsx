@@ -38,7 +38,7 @@ export default function GeneratePage() {
       const res = await fetch('/api/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ swmsId: result.documentId }),
+        body: JSON.stringify({ swmsId: result.documentId, company: result.company }),
       });
       if (!res.ok) throw new Error('PDF generation failed');
       const blob = await res.blob();
