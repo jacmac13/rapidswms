@@ -13,7 +13,11 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          // Must set on both request and response so the refreshed
+          // session token is available to subsequent server code.
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -23,6 +27,8 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // IMPORTANT: do not add logic between createServerClient and getUser().
+  // A stale session is refreshed here; skipping getUser() breaks auth.
   const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
 
@@ -34,7 +40,12 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/favicon');
 
   if (!user && !isPublic) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    const redirectResponse = NextResponse.redirect(new URL('/login', request.url));
+    // Copy refreshed session cookies onto the redirect so they aren't lost.
+    supabaseResponse.cookies.getAll().forEach(cookie =>
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie)
+    );
+    return redirectResponse;
   }
   if (user && (pathname === '/login' || pathname === '/signup')) {
     return NextResponse.redirect(new URL('/generate', request.url));
