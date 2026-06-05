@@ -103,4 +103,69 @@
   h1, h2, h3 {
     font-family: var(--font-archivo-black), sans-serif;
   }
+  /* Minimum 44px touch targets for all interactive elements */
+  button, [role="button"], a, input, select, textarea {
+    min-height: 44px;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    min-height: unset;
+  }
+}
+
+/* ─── Print styles ─────────────────────────────────────────── */
+@media print {
+  /* Reset page */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    background: white !important;
+    font-size: 11pt;
+  }
+
+  /* Hide everything except the SWMS document */
+  nav,
+  .print\:hidden,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* Remove card chrome — let content breathe */
+  .print\:shadow-none { box-shadow: none !important; }
+  .print\:border-none { border: none !important; }
+
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 18mm 15mm;
+  }
+
+  /* Keep activity cards together where possible */
+  .activity-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Section headings never orphaned at bottom of page */
+  h2 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Sign-off table always starts on a fresh page */
+  .signoff-section {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /* Ensure amber disclaimer banner prints */
+  .disclaimer-banner {
+    background-color: #FFB81C !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Tighten spacing for print */
+  .px-6 { padding-left: 0 !important; padding-right: 0 !important; }
+  .py-6 { padding-top: 12pt !important; padding-bottom: 12pt !important; }
+  .space-y-8 > * + * { margin-top: 16pt !important; }
 }

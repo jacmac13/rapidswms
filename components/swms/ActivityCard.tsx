@@ -51,7 +51,7 @@ export function ActivityCard({ activity, index }: Props) {
       </div>
 
       {/* Risk row */}
-      <div className="border-t border-brand-line bg-brand-paper-2 px-4 py-2.5 flex items-center gap-4 text-xs">
+      <div className="border-t border-brand-line bg-brand-paper-2 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <span className="text-brand-steel font-medium">Initial risk</span>
         <RiskBadge level={activity.initialRisk} />
         <span className="text-brand-steel">→</span>
