@@ -93,7 +93,7 @@ ${input.jobDescription}
 Produce a complete, job-specific SWMS as JSON per your instructions.`;
 
   const response = await anthropicClient.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 4096,
     system: SWMS_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userMessage }],
