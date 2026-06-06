@@ -115,7 +115,7 @@ export async function POST(request: Request) {
         let fullText = '';
         const anthropicStream = anthropicClient.messages.stream({
           model: 'claude-sonnet-4-5',
-          max_tokens: 1500,
+          max_tokens: 2500,
           system: SWMS_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: buildUserMessage(input) }],
         });
@@ -145,8 +145,11 @@ export async function POST(request: Request) {
 
         clearInterval(heartbeat);
 
+        console.log('[generate-swms] Raw Claude output (first 500 chars):', fullText.slice(0, 500));
+        console.log('[generate-swms] Output length:', fullText.length, 'chars');
+
         const swmsJson = parseSwmsJson(fullText);
-        console.log('[generate-swms] Claude done, jobTitle:', swmsJson.jobTitle);
+        console.log('[generate-swms] Parsed OK, jobTitle:', swmsJson.jobTitle);
 
         // Save to database
         const documentNumber = generateDocNumber();
@@ -179,8 +182,14 @@ export async function POST(request: Request) {
           documentNumber,
         }));
       } catch (err) {
-        const error = err as Error & { status?: number };
-        console.error('[generate-swms] Error:', { message: error.message, status: error.status });
+        const error = err as Error & { status?: number; error?: unknown };
+        console.error('[generate-swms] CAUGHT ERROR:', {
+          name: error.name,
+          message: error.message,
+          status: error.status,
+          errorBody: JSON.stringify(error.error),
+          stack: error.stack?.split('\n').slice(0, 4).join(' | '),
+        });
         controller.enqueue(encode('error', { message: 'Could not generate the SWMS right now. Please try again.' }));
       } finally {
         controller.close();
