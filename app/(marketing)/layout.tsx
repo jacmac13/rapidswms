@@ -10,6 +10,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <span className="font-[family-name:var(--font-archivo-black)] text-brand-ink">RapidSWMS</span>
           <p>© {new Date().getFullYear()} RapidSWMS. Built for Australian tradies.</p>
           <div className="flex gap-4">
+            <a href="/swms" className="hover:text-brand-ink transition-colors">SWMS Templates</a>
             <a href="/pricing" className="hover:text-brand-ink transition-colors">Pricing</a>
             <a href="/login" className="hover:text-brand-ink transition-colors">Sign in</a>
           </div>

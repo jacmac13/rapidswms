@@ -22,6 +22,9 @@ export function MarketingNav() {
         RapidSWMS
       </Link>
       <div className="flex items-center gap-4">
+        <Link href="/swms" className="text-sm text-brand-steel hover:text-brand-ink transition-colors hidden sm:block">
+          SWMS Templates
+        </Link>
         <Link href="/pricing" className="text-sm text-brand-steel hover:text-brand-ink transition-colors hidden sm:block">
           Pricing
         </Link>

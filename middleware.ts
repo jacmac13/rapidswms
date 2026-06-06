@@ -35,6 +35,7 @@ export async function middleware(request: NextRequest) {
   const publicPaths = ['/', '/pricing', '/login', '/signup'];
   const isPublic =
     publicPaths.includes(pathname) ||
+    pathname.startsWith('/swms') ||
     pathname.startsWith('/api/stripe/webhook') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon');
