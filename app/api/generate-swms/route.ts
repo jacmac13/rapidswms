@@ -115,7 +115,7 @@ export async function POST(request: Request) {
         let fullText = '';
         const anthropicStream = anthropicClient.messages.stream({
           model: 'claude-sonnet-4-5',
-          max_tokens: 4096,
+          max_tokens: 1500,
           system: SWMS_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: buildUserMessage(input) }],
         });
