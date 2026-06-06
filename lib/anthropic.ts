@@ -80,8 +80,8 @@ export interface SwmsInput {
   jobDescription: string;
 }
 
-export async function generateSwms(input: SwmsInput): Promise<SwmsDocument> {
-  const userMessage = `Trade: ${input.trade}
+export function buildUserMessage(input: SwmsInput): string {
+  return `Trade: ${input.trade}
 Jurisdiction: ${input.state}, Australia
 Business: ${input.company}${input.abn ? ` (ABN: ${input.abn})` : ''}
 Worksite: ${input.site || 'Not specified'}
@@ -91,24 +91,28 @@ JOB DESCRIPTION:
 ${input.jobDescription}
 
 Produce a complete, job-specific SWMS as JSON per your instructions.`;
+}
 
+export function parseSwmsJson(text: string): SwmsDocument {
+  const cleaned = text.trim().replace(/```json|```/gi, '').trim();
+  const first = cleaned.indexOf('{');
+  const last = cleaned.lastIndexOf('}');
+  if (first === -1 || last === -1) throw new Error('Invalid JSON response from Claude');
+  return JSON.parse(cleaned.slice(first, last + 1)) as SwmsDocument;
+}
+
+export async function generateSwms(input: SwmsInput): Promise<SwmsDocument> {
   const response = await anthropicClient.messages.create({
     model: 'claude-sonnet-4-5',
     max_tokens: 4096,
     system: SWMS_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
+    messages: [{ role: 'user', content: buildUserMessage(input) }],
   });
 
   const text = response.content
     .filter(b => b.type === 'text')
     .map(b => (b as { type: 'text'; text: string }).text)
-    .join('')
-    .trim()
-    .replace(/```json|```/gi, '')
-    .trim();
+    .join('');
 
-  const first = text.indexOf('{');
-  const last = text.lastIndexOf('}');
-  if (first === -1 || last === -1) throw new Error('Invalid JSON response from Claude');
-  return JSON.parse(text.slice(first, last + 1)) as SwmsDocument;
+  return parseSwmsJson(text);
 }

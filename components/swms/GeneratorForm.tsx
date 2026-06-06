@@ -28,6 +28,15 @@ const PROGRESS_STEPS = [
   'Compiling document…',
 ];
 
+// Must match the step strings sent by the API route's heartbeat
+const PROGRESS_STEP_MAP: Record<string, number> = {
+  'Reading job description…': 0,
+  'Identifying hazards…': 1,
+  'Applying controls…': 2,
+  'Rating risks…': 3,
+  'Compiling document…': 4,
+};
+
 const SAMPLE_JOB = {
   company: 'Sunshine Solar Pty Ltd',
   abn: '12 345 678 901',
@@ -103,24 +112,69 @@ export function GeneratorForm({ onResult }: Props) {
     setLoading(true);
     setError('');
 
-    const res = await fetch('/api/generate-swms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company, abn, trade, state, site, principal, jobDescription }),
-    });
+    try {
+      const res = await fetch('/api/generate-swms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company, abn, trade, state, site, principal, jobDescription }),
+      });
 
-    const data = await res.json() as GenerateResult & { error?: string };
-    setLoading(false);
+      // Non-2xx before streaming starts = JSON error (auth, validation, etc.)
+      if (!res.ok || !res.body) {
+        const data = await res.json() as { error?: string };
+        setError(data.error ?? 'Something went wrong. Please try again.');
+        setLoading(false);
+        return;
+      }
 
-    if (!res.ok || !data.swms) {
-      setError(data.error ?? 'Something went wrong. Please try again.');
-      return;
+      // Consume the SSE stream
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data: ')) continue;
+          let parsed: { event: string; data: { step?: string; message?: string } & GenerateResult };
+          try {
+            parsed = JSON.parse(line.slice(6)) as typeof parsed;
+          } catch {
+            continue;
+          }
+
+          if (parsed.event === 'progress' && parsed.data.step) {
+            const idx = PROGRESS_STEP_MAP[parsed.data.step];
+            if (idx !== undefined) setProgressStep(idx);
+          } else if (parsed.event === 'error') {
+            setError(parsed.data.message ?? 'Something went wrong. Please try again.');
+            setLoading(false);
+            return;
+          } else if (parsed.event === 'complete') {
+            setLoading(false);
+            onResult(
+              { swms: parsed.data.swms, documentId: parsed.data.documentId, documentNumber: parsed.data.documentNumber },
+              { company, trade, state, site },
+            );
+            return;
+          }
+        }
+      }
+
+      // Stream ended without a complete event
+      setError('Generation timed out. Please try again.');
+      setLoading(false);
+    } catch {
+      setError('Network error. Please check your connection and try again.');
+      setLoading(false);
     }
-
-    onResult(
-      { swms: data.swms, documentId: data.documentId, documentNumber: data.documentNumber },
-      { company, trade, state, site },
-    );
   }
 
   const canSubmit = !!company.trim() && !!trade && !!state && jobDescription.trim().length >= 20;

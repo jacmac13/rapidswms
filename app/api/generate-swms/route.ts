@@ -1,7 +1,12 @@
-import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { generateSwms, type SwmsInput } from '@/lib/anthropic';
+import {
+  anthropicClient,
+  SWMS_SYSTEM_PROMPT,
+  buildUserMessage,
+  parseSwmsJson,
+  type SwmsInput,
+} from '@/lib/anthropic';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -19,17 +24,20 @@ function generateDocNumber(): string {
   return `SWMS-${year}-${rand}`;
 }
 
-export async function POST(request: Request) {
-  console.log('[generate-swms] POST received');
+function encode(event: string, data: unknown): Uint8Array {
+  return new TextEncoder().encode(
+    `data: ${JSON.stringify({ event, data })}\n\n`
+  );
+}
 
+export async function POST(request: Request) {
   // Auth check
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (!user) {
     console.error('[generate-swms] Auth failed:', authError?.message);
-    return NextResponse.json({ error: 'Sign in to generate a SWMS.' }, { status: 401 });
+    return Response.json({ error: 'Sign in to generate a SWMS.' }, { status: 401 });
   }
-  console.log('[generate-swms] Auth OK, user:', user.id);
 
   // Subscription check
   const { data: subscription, error: subError } = await supabase
@@ -42,7 +50,7 @@ export async function POST(request: Request) {
 
   const isActive = subscription?.status === 'active' || subscription?.status === 'trialing';
   if (!isActive) {
-    return NextResponse.json(
+    return Response.json(
       { error: 'An active subscription is required. Choose a plan to continue.' },
       { status: 402 }
     );
@@ -53,25 +61,20 @@ export async function POST(request: Request) {
   try {
     body = await request.json() as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+    return Response.json({ error: 'Invalid request body.' }, { status: 400 });
   }
 
   const { company, abn, trade, state, site, principal, jobDescription } = body as {
-    company?: string;
-    abn?: string;
-    trade?: string;
-    state?: string;
-    site?: string;
-    principal?: string;
-    jobDescription?: string;
+    company?: string; abn?: string; trade?: string; state?: string;
+    site?: string; principal?: string; jobDescription?: string;
   };
 
-  if (!company?.trim()) return NextResponse.json({ error: 'Business name is required.' }, { status: 400 });
-  if (!trade?.trim()) return NextResponse.json({ error: 'Trade is required.' }, { status: 400 });
-  if (!state?.trim()) return NextResponse.json({ error: 'State/Territory is required.' }, { status: 400 });
-  if (!jobDescription?.trim()) return NextResponse.json({ error: 'Job description is required.' }, { status: 400 });
+  if (!company?.trim()) return Response.json({ error: 'Business name is required.' }, { status: 400 });
+  if (!trade?.trim()) return Response.json({ error: 'Trade is required.' }, { status: 400 });
+  if (!state?.trim()) return Response.json({ error: 'State/Territory is required.' }, { status: 400 });
+  if (!jobDescription?.trim()) return Response.json({ error: 'Job description is required.' }, { status: 400 });
   if (jobDescription.trim().length < 20) {
-    return NextResponse.json({ error: 'Job description must be at least 20 characters.' }, { status: 400 });
+    return Response.json({ error: 'Job description must be at least 20 characters.' }, { status: 400 });
   }
 
   // Rate limit: 20 per day
@@ -86,13 +89,12 @@ export async function POST(request: Request) {
     .gte('created_at', dayStart.toISOString());
 
   if ((count ?? 0) >= 20) {
-    return NextResponse.json(
-      { error: 'You\'ve reached the 20 SWMS daily limit. Try again tomorrow.' },
+    return Response.json(
+      { error: "You've reached the 20 SWMS daily limit. Try again tomorrow." },
       { status: 429 }
     );
   }
 
-  // Generate via Claude
   const input: SwmsInput = {
     company: company.trim(),
     abn: abn?.trim(),
@@ -103,57 +105,94 @@ export async function POST(request: Request) {
     jobDescription: jobDescription.trim(),
   };
 
-  console.log('[generate-swms] Starting Claude API call', {
-    trade: input.trade,
-    state: input.state,
-    jobDescriptionLength: input.jobDescription.length,
-    hasApiKey: !!process.env.ANTHROPIC_API_KEY,
-    apiKeyPrefix: process.env.ANTHROPIC_API_KEY?.slice(0, 15),
+  // Return a streaming SSE response — keeps the connection alive while
+  // Claude generates, preventing Vercel's 10s idle timeout.
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        controller.enqueue(encode('progress', { step: 'Reading job description…' }));
+
+        let fullText = '';
+        const anthropicStream = anthropicClient.messages.stream({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 4096,
+          system: SWMS_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: buildUserMessage(input) }],
+        });
+
+        // Send a heartbeat every 5s so Vercel doesn't close an idle connection
+        let stepIndex = 0;
+        const STEPS = [
+          'Identifying hazards…',
+          'Applying controls…',
+          'Rating risks…',
+          'Compiling document…',
+        ];
+        const heartbeat = setInterval(() => {
+          if (stepIndex < STEPS.length) {
+            controller.enqueue(encode('progress', { step: STEPS[stepIndex++] }));
+          }
+        }, 5000);
+
+        for await (const chunk of anthropicStream) {
+          if (
+            chunk.type === 'content_block_delta' &&
+            chunk.delta.type === 'text_delta'
+          ) {
+            fullText += chunk.delta.text;
+          }
+        }
+
+        clearInterval(heartbeat);
+
+        const swmsJson = parseSwmsJson(fullText);
+        console.log('[generate-swms] Claude done, jobTitle:', swmsJson.jobTitle);
+
+        // Save to database
+        const documentNumber = generateDocNumber();
+        const { data: saved, error: dbError } = await admin
+          .from('swms_documents')
+          .insert({
+            user_id: user.id,
+            document_number: documentNumber,
+            job_title: swmsJson.jobTitle,
+            trade: input.trade,
+            state: input.state,
+            site_address: input.site || null,
+            principal_contractor: input.principal || null,
+            job_description: input.jobDescription,
+            swms_json: swmsJson,
+          })
+          .select('id')
+          .single();
+
+        if (dbError || !saved) {
+          console.error('[generate-swms] DB save error:', dbError);
+          controller.enqueue(encode('error', { message: 'SWMS generated but could not be saved. Please try again.' }));
+          controller.close();
+          return;
+        }
+
+        controller.enqueue(encode('complete', {
+          swms: swmsJson,
+          documentId: saved.id,
+          documentNumber,
+        }));
+      } catch (err) {
+        const error = err as Error & { status?: number };
+        console.error('[generate-swms] Error:', { message: error.message, status: error.status });
+        controller.enqueue(encode('error', { message: 'Could not generate the SWMS right now. Please try again.' }));
+      } finally {
+        controller.close();
+      }
+    },
   });
 
-  let swmsJson;
-  try {
-    swmsJson = await generateSwms(input);
-    console.log('[generate-swms] Claude API call succeeded, jobTitle:', swmsJson.jobTitle);
-  } catch (err) {
-    const error = err as Error & { status?: number; error?: unknown };
-    console.error('[generate-swms] Claude API error:', {
-      message: error.message,
-      status: error.status,
-      errorBody: error.error,
-      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
-    });
-    return NextResponse.json(
-      { error: 'Could not generate the SWMS right now. Please try again in a moment.' },
-      { status: 500 }
-    );
-  }
-
-  // Save to database
-  const documentNumber = generateDocNumber();
-  const { data: saved, error: dbError } = await admin
-    .from('swms_documents')
-    .insert({
-      user_id: user.id,
-      document_number: documentNumber,
-      job_title: swmsJson.jobTitle,
-      trade: trade.trim(),
-      state: state.trim(),
-      site_address: site?.trim() || null,
-      principal_contractor: principal?.trim() || null,
-      job_description: jobDescription.trim(),
-      swms_json: swmsJson,
-    })
-    .select('id')
-    .single();
-
-  if (dbError || !saved) {
-    console.error('[generate-swms] DB save error:', dbError);
-    return NextResponse.json(
-      { error: 'SWMS generated but could not be saved. Please try again.' },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json({ swms: swmsJson, documentId: saved.id, documentNumber });
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }
