@@ -9,6 +9,9 @@ const ibmPlexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], 
 export const metadata: Metadata = {
   title: "RapidSWMS — SWMS in 60 Seconds",
   description: "Generate Safe Work Method Statements instantly for Australian tradies.",
+  verification: {
+    google: "NvGhHEVuRu-DWlc2_43e8NM1o_UYgQWzqD7RNmJa7JI",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
