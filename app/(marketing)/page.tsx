@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { motion, useInView, animate } from 'framer-motion';
+import { motion, useInView, animate, type Variants } from 'framer-motion';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -55,12 +55,12 @@ const PLANS = [
 
 // ─── Animation variants ────────────────────────────────────────────────────────
 
-const fu = {
+const fu: Variants = {
   hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } },
 };
 
-const sg = {
+const sg: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.1 } },
 };
@@ -199,7 +199,7 @@ export default function LandingPage() {
               style={{ transformOrigin: 'left' }}
               initial={{ scaleX: 0 }}
               animate={stepInView ? { scaleX: 1 } : {}}
-              transition={{ duration: 1.4, delay: 0.4, ease: [0.22, 1, 0.36, 1] }} />
+              transition={{ duration: 1.4, delay: 0.4, ease: 'easeOut' }} />
           </div>
 
           <motion.div className="grid grid-cols-1 md:grid-cols-3 gap-12"
