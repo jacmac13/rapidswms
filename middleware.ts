@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
 
-  const publicPaths = ['/', '/pricing', '/login', '/signup'];
+  const publicPaths = ['/', '/pricing', '/login', '/signup', '/sitemap.xml', '/robots.txt'];
   const isPublic =
     publicPaths.includes(pathname) ||
     pathname.startsWith('/swms') ||
@@ -56,5 +56,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)'],
 };
