@@ -1,9 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { SwmsDocument } from './types';
 
-export const anthropicClient = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_client) {
+    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  }
+  return _client;
+}
+export const anthropicClient = { get messages() { return getClient().messages; } };
 
 export const SWMS_SYSTEM_PROMPT = `You are an Australian WHS consultant. Produce a Safe Work Method Statement as valid JSON — no markdown, no preamble.
 

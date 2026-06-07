@@ -8,6 +8,7 @@ export function DashboardNav() {
   const links = [
     { href: '/generate', label: 'Generate' },
     { href: '/history', label: 'History' },
+    { href: '/templates', label: 'Templates' },
     { href: '/account', label: 'Account' },
   ];
 

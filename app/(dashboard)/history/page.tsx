@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import type { SwmsRecord } from '@/lib/types';
+import { UpgradePrompt } from '@/components/shared/UpgradePrompt';
+import type { SwmsRecord, Subscription, SwmsVersion } from '@/lib/types';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-brand-line rounded ${className ?? ''}`} />;
@@ -44,21 +45,180 @@ function EmptyState() {
   );
 }
 
+function VersionList({ recordId }: { recordId: string }) {
+  const [versions, setVersions] = useState<SwmsVersion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(`/api/swms-versions/${recordId}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load versions');
+        return res.json() as Promise<SwmsVersion[]>;
+      })
+      .then(data => {
+        setVersions(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError('Could not load version history.');
+        setLoading(false);
+      });
+  }, [recordId]);
+
+  if (loading) {
+    return (
+      <div className="mt-3 space-y-2 pl-4 border-l-2 border-brand-line">
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-4 w-1/3" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <p className="mt-3 text-sm text-risk-high pl-4">{error}</p>;
+  }
+
+  if (versions.length === 0) {
+    return (
+      <p className="mt-3 text-sm text-brand-steel pl-4 border-l-2 border-brand-line">
+        No previous versions saved.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="mt-3 space-y-2 pl-4 border-l-2 border-brand-line">
+      {versions.map(v => {
+        const vDate = new Date(v.created_at).toLocaleDateString('en-AU', {
+          day: '2-digit', month: 'short', year: 'numeric',
+        });
+        return (
+          <li key={v.id} className="flex items-center justify-between text-sm">
+            <span className="text-brand-steel">
+              Version {v.version_number} — {vDate}
+            </span>
+            <a
+              href={`/generate?view=${v.swms_document_id}&version=${v.id}`}
+              className="h-7 px-3 rounded-md border border-brand-line text-brand-ink text-xs font-medium hover:bg-brand-paper transition-colors leading-7"
+            >
+              View
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function HistoryRow({
+  record,
+  isBusiness,
+  downloading,
+  onDownload,
+}: {
+  record: SwmsRecord;
+  isBusiness: boolean;
+  downloading: string | null;
+  onDownload: (record: SwmsRecord) => void;
+}) {
+  const [versionsOpen, setVersionsOpen] = useState(false);
+
+  const date = new Date(record.created_at).toLocaleDateString('en-AU', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+
+  return (
+    <div className="bg-white border border-brand-line rounded-xl p-4 hover:border-brand-steel transition-colors">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold text-brand-ink truncate">{record.job_title}</h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+            <span className="text-xs text-brand-steel">{record.trade}</span>
+            <span className="text-xs text-brand-steel">·</span>
+            <span className="text-xs text-brand-steel">{record.state}</span>
+            <span className="text-xs text-brand-steel">·</span>
+            <span className="text-xs font-[family-name:var(--font-mono-plex)] text-brand-steel">
+              {record.document_number}
+            </span>
+            <span className="text-xs text-brand-steel">·</span>
+            <span className="text-xs text-brand-steel">{date}</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          {isBusiness && (
+            <button
+              onClick={() => setVersionsOpen(v => !v)}
+              className="h-9 px-3 rounded-md border border-brand-line text-brand-ink text-sm font-medium hover:bg-brand-paper transition-colors leading-9"
+            >
+              {versionsOpen ? 'Hide versions' : 'Versions'}
+            </button>
+          )}
+          <Link
+            href={`/generate?view=${record.id}`}
+            className="h-9 px-3 rounded-md border border-brand-line text-brand-ink text-sm font-medium hover:bg-brand-paper transition-colors leading-9"
+          >
+            View
+          </Link>
+          <button
+            onClick={() => onDownload(record)}
+            disabled={downloading === record.id}
+            className="h-9 px-3 rounded-md bg-brand-ink text-white text-sm font-medium hover:bg-brand-charcoal disabled:opacity-50 transition-colors"
+          >
+            {downloading === record.id ? 'Downloading…' : 'Download PDF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Version history panel */}
+      {isBusiness && versionsOpen && <VersionList recordId={record.id} />}
+    </div>
+  );
+}
+
 export default function HistoryPage() {
   const [records, setRecords] = useState<SwmsRecord[]>([]);
+  const [subscription, setSubscription] = useState<Pick<Subscription, 'plan'> | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
-    supabase
-      .from('swms_documents')
-      .select('id, document_number, job_title, trade, state, created_at, job_description')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setRecords((data ?? []) as unknown as SwmsRecord[]);
-        setLoading(false);
-      });
+
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 90);
+
+      const [subResult, docsResult] = await Promise.all([
+        supabase.from('subscriptions').select('plan').eq('user_id', user.id).single(),
+        supabase
+          .from('swms_documents')
+          .select('id, document_number, job_title, trade, state, created_at, job_description, qr_token')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+      ]);
+
+      const plan = (subResult.data?.plan ?? 'solo') as Subscription['plan'];
+      setSubscription({ plan });
+
+      let docs = (docsResult.data ?? []) as unknown as SwmsRecord[];
+
+      // For non-business plans, filter to 90 days
+      if (plan !== 'business') {
+        docs = docs.filter(d => new Date(d.created_at) >= cutoffDate);
+      }
+
+      setRecords(docs);
+      setLoading(false);
+    }
+
+    load();
   }, []);
 
   async function handleDownload(record: SwmsRecord) {
@@ -84,6 +244,9 @@ export default function HistoryPage() {
     }
   }
 
+  const isBusiness = subscription?.plan === 'business';
+  const showHistoryNotice = !loading && subscription && subscription.plan !== 'business';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -101,6 +264,16 @@ export default function HistoryPage() {
         </Link>
       </div>
 
+      {/* History limit notice for solo/crew */}
+      {showHistoryNotice && (
+        <div className="rounded-lg bg-brand-paper border border-brand-line p-4">
+          <p className="text-sm text-brand-steel mb-2">
+            Solo and Small Crew plans show 90 days of history.
+          </p>
+          <UpgradePrompt requiredPlan="business" feature="unlimited SWMS history" />
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(n => <RowSkeleton key={n} />)}
@@ -109,50 +282,15 @@ export default function HistoryPage() {
         <EmptyState />
       ) : (
         <div className="space-y-3">
-          {records.map(record => {
-            const date = new Date(record.created_at).toLocaleDateString('en-AU', {
-              day: '2-digit', month: 'short', year: 'numeric',
-            });
-            return (
-              <div
-                key={record.id}
-                className="bg-white border border-brand-line rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-brand-steel transition-colors"
-              >
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold text-brand-ink truncate">{record.job_title}</h2>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                    <span className="text-xs text-brand-steel">{record.trade}</span>
-                    <span className="text-xs text-brand-steel">·</span>
-                    <span className="text-xs text-brand-steel">{record.state}</span>
-                    <span className="text-xs text-brand-steel">·</span>
-                    <span className="text-xs font-[family-name:var(--font-mono-plex)] text-brand-steel">
-                      {record.document_number}
-                    </span>
-                    <span className="text-xs text-brand-steel">·</span>
-                    <span className="text-xs text-brand-steel">{date}</span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    href={`/generate?view=${record.id}`}
-                    className="h-9 px-3 rounded-md border border-brand-line text-brand-ink text-sm font-medium hover:bg-brand-paper transition-colors leading-9"
-                  >
-                    View
-                  </Link>
-                  <button
-                    onClick={() => handleDownload(record)}
-                    disabled={downloading === record.id}
-                    className="h-9 px-3 rounded-md bg-brand-ink text-white text-sm font-medium hover:bg-brand-charcoal disabled:opacity-50 transition-colors"
-                  >
-                    {downloading === record.id ? 'Downloading…' : 'Download PDF'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {records.map(record => (
+            <HistoryRow
+              key={record.id}
+              record={record}
+              isBusiness={isBusiness}
+              downloading={downloading}
+              onDownload={handleDownload}
+            />
+          ))}
         </div>
       )}
 
@@ -160,7 +298,7 @@ export default function HistoryPage() {
       <div className="sm:hidden">
         <Link
           href="/generate"
-          className="block w-full h-11 rounded-md bg-brand-amber hover:bg-brand-amber-deep text-brand-ink font-semibold text-sm text-center leading-11"
+          className="block w-full h-11 rounded-md bg-brand-amber hover:bg-brand-amber-deep text-brand-ink font-semibold text-sm text-center leading-[44px]"
         >
           + New SWMS
         </Link>

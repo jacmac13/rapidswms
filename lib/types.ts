@@ -29,7 +29,43 @@ export interface SwmsRecord {
   job_description: string;
   swms_json: SwmsDocument;
   pdf_url: string | null;
+  qr_token: string | null;
   created_at: string;
+}
+
+export interface WorkerProfile {
+  id: string;
+  user_id: string;
+  name: string;
+  role: string;
+  created_at: string;
+}
+
+export interface SwmsTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  trade: string;
+  swms_json: SwmsDocument;
+  created_at: string;
+}
+
+export interface SwmsVersion {
+  id: string;
+  swms_document_id: string;
+  user_id: string;
+  version_number: number;
+  swms_json: SwmsDocument;
+  created_at: string;
+}
+
+export interface QrSignature {
+  id: string;
+  swms_document_id: string;
+  qr_token: string;
+  worker_name: string;
+  worker_role: string | null;
+  signed_at: string;
 }
 
 export interface Profile {
@@ -37,6 +73,7 @@ export interface Profile {
   full_name: string | null;
   business_name: string | null;
   abn: string | null;
+  company_logo_url: string | null;
   created_at: string;
 }
 

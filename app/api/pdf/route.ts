@@ -29,12 +29,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Document not found.' }, { status: 404 });
   }
 
-  // Get company name from profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('business_name')
-    .eq('id', user.id)
-    .single();
+  // Get company name, logo, and subscription in parallel
+  const [{ data: profile }, { data: subscription }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('business_name, company_logo_url')
+      .eq('id', user.id)
+      .single(),
+    supabase
+      .from('subscriptions')
+      .select('plan, status')
+      .eq('user_id', user.id)
+      .single(),
+  ]);
+
+  const isBusinessPlan = subscription?.plan === 'business' &&
+    (subscription?.status === 'active' || subscription?.status === 'trialing');
+
+  const logoUrl = isBusinessPlan && profile?.company_logo_url
+    ? profile.company_logo_url
+    : undefined;
 
   let pdfBuffer: Buffer;
   try {
@@ -45,6 +59,7 @@ export async function POST(request: Request) {
       trade: doc.trade,
       state: doc.state,
       siteAddress: doc.site_address ?? undefined,
+      logoUrl,
     });
   } catch (err) {
     console.error('[pdf] generation error:', err);

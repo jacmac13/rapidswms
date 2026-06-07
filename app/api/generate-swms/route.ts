@@ -7,6 +7,8 @@ import {
   parseSwmsJson,
   type SwmsInput,
 } from '@/lib/anthropic';
+import { hasFeature, getDailyLimit } from '@/lib/plan-features';
+import type { PlanKey } from '@/lib/plan-features';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -42,7 +44,7 @@ export async function POST(request: Request) {
   // Subscription check
   const { data: subscription, error: subError } = await supabase
     .from('subscriptions')
-    .select('status')
+    .select('plan, status')
     .eq('user_id', user.id)
     .single();
 
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Job description must be at least 20 characters.' }, { status: 400 });
   }
 
-  // Rate limit: 20 per day
+  // Rate limit: plan-based daily limit
   const admin = adminClient();
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
@@ -88,9 +90,10 @@ export async function POST(request: Request) {
     .eq('user_id', user.id)
     .gte('created_at', dayStart.toISOString());
 
-  if ((count ?? 0) >= 20) {
+  const dailyLimit = getDailyLimit(subscription?.plan as PlanKey);
+  if ((count ?? 0) >= dailyLimit) {
     return Response.json(
-      { error: "You've reached the 20 SWMS daily limit. Try again tomorrow." },
+      { error: `You've reached the ${dailyLimit} SWMS daily limit for your plan.` },
       { status: 429 }
     );
   }
@@ -174,6 +177,16 @@ export async function POST(request: Request) {
           controller.enqueue(encode('error', { message: 'SWMS generated but could not be saved. Please try again.' }));
           controller.close();
           return;
+        }
+
+        // Save version history for business users
+        if (hasFeature(subscription?.plan as PlanKey, 'version_history') && saved?.id) {
+          await admin.from('swms_versions').insert({
+            swms_document_id: saved.id,
+            user_id: user.id,
+            version_number: 1,
+            swms_json: swmsJson,
+          });
         }
 
         controller.enqueue(encode('complete', {

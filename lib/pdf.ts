@@ -1,5 +1,5 @@
 import {
-  Document, Page, View, Text, StyleSheet, renderToBuffer, Font,
+  Document, Page, View, Text, StyleSheet, renderToBuffer, Font, Image,
 } from '@react-pdf/renderer';
 import { createElement } from 'react';
 import type { SwmsDocument, SwmsActivity } from './types';
@@ -146,8 +146,9 @@ export async function generatePdf(params: {
   trade: string;
   state: string;
   siteAddress?: string;
+  logoUrl?: string;
 }): Promise<Buffer> {
-  const { swms, documentNumber, company, trade, state, siteAddress } = params;
+  const { swms, documentNumber, company, trade, state, siteAddress, logoUrl } = params;
   const today = new Date().toLocaleDateString('en-AU', {
     day: '2-digit', month: 'long', year: 'numeric',
   });
@@ -166,7 +167,13 @@ export async function generatePdf(params: {
           createElement(Text, { style: s.subHeader }, `${company}  ·  ${trade}  ·  ${state}`),
           siteAddress ? createElement(Text, { style: s.subHeader }, siteAddress) : null,
         ),
-        createElement(View, { style: s.docMeta },
+        createElement(View, { style: [s.docMeta, { alignItems: 'flex-end' }] },
+          logoUrl
+            ? createElement(Image, {
+                src: logoUrl,
+                style: { width: 60, height: 60, objectFit: 'contain', marginBottom: 4 },
+              })
+            : null,
           createElement(Text, { style: s.docNumber }, documentNumber),
           createElement(Text, { style: s.docDate }, today),
         ),
